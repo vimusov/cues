@@ -21,6 +21,8 @@ Requirements
 
 * Python >= 3.5
 * setuptools (for installation only)
+* flac (optionally, for support FLAC files)
+* wavpack (optionally, for support WavPack files)
 
 Build and install
 =================

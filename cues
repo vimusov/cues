@@ -1,0 +1,162 @@
+#!/usr/bin/python
+
+"""
+    cues - Utility that splits one huge file into single files using a CUE sheet.
+
+    Copyright (C) 2019 Vadim Kuznetsov <vimusov@gmail.com>
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
+
+import logging
+from argparse import ArgumentParser
+from enum import Enum, unique
+from pathlib import Path
+from subprocess import check_call
+from typing import List, NamedTuple, Optional
+from wave import Wave_read, Wave_write, _wave_params
+
+Track = NamedTuple('Track', [
+    ('title', Optional[str]),
+    ('offset', int),
+    ('length', int),
+])
+
+
+@unique
+class Codec(Enum):
+    FLAC = '.flac'
+    WAV = '.wav'
+    WavPack = '.wv'
+
+
+codecs_args = {
+    Codec.FLAC: ['flac', '-d', '-o'],
+    Codec.WavPack: ['wvunpack', '-w', '-o'],
+}
+
+
+log = logging.getLogger(__name__)
+
+
+def parse_cue_file(cue_sheet: str, wav_params: _wave_params) -> List[Track]:
+    def unquote(value: str) -> str:
+        value = value.replace(r'\"', '"')
+        value = value.replace(r"\'", "'")
+        return value.strip('"')
+
+    lines = [line.strip() for line in cue_sheet.splitlines()]
+    tracks = []
+    while lines:
+        line = lines.pop(0)
+        if not line:
+            continue
+        header, *parts = line.split()
+        if header != 'TRACK':
+            continue
+        title = None
+        while lines:
+            line = lines.pop(0)
+            if not line:
+                continue
+            header, *parts = line.split(None)
+            if header == 'TITLE':
+                title = unquote(' '.join(parts))
+            if header != 'INDEX':
+                continue
+            index_no, end_position = parts
+            if int(index_no) != 1:
+                continue
+            minutes, seconds, frames = tuple(map(int, end_position.split(':')))
+            offset = (60 * minutes * wav_params.framerate) + (seconds * wav_params.framerate) + frames
+            if tracks:
+                track = tracks[-1]
+                tracks[-1] = track._replace(length=offset - track.offset - 1)
+                tracks.append(Track(title=title, offset=offset, length=0))
+                break
+            else:
+                tracks.append(Track(title=title, offset=0, length=0))
+                continue
+    track = tracks[-1]
+    tracks[-1] = track._replace(length=wav_params.nframes - track.offset)
+    return tracks
+
+
+def main():
+    parser = ArgumentParser()
+    parser.add_argument('-e', dest='encoding', default=None, help='CUE sheet encoding (autodetect if undefined).')
+    parser.add_argument('cue_path', help='A file with CUE sheet.')
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+
+    def panic(*args, **kwargs):
+        log.critical(*args, **kwargs)
+        exit(1)
+
+    cue_path = Path(args.cue_path).resolve()
+
+    for codec in list(Codec):
+        sound_path = Path(cue_path.parent, '%s%s' % (cue_path.stem, codec.value))
+        if sound_path.exists():
+            log.info("Found sound file '%s'.", sound_path.name)
+            break
+    else:
+        panic('Unable to detect sound file. It must have the same name as CUE sheet file and be placed at the same directory.')
+
+    try:
+        sound_codec = Codec(sound_path.suffix)
+    except ValueError:
+        panic('Unsupported codec, sorry.')
+    else:
+        log.info('Codec %s detected.', codec.name)
+
+    content = cue_path.read_bytes()
+    try:
+        cue_sheet = content.decode(args.encoding or 'utf-8')
+    except UnicodeDecodeError:
+        cue_sheet = content.decode('cp1251')
+
+    if sound_codec == Codec.WAV:
+        in_wav_path = sound_path
+    else:
+        in_wav_path = Path(sound_path.parent, '%s.wav' % sound_path.stem)
+        log.info("Decoding file '%s' using codec %s.", sound_path.name, sound_codec.name)
+        check_call(codecs_args[sound_codec] + [str(in_wav_path), str(sound_path)])
+
+    with Wave_read(str(in_wav_path)) as in_wav:
+        params = in_wav.getparams()
+        tracks = parse_cue_file(cue_sheet, params)
+        log.info("Splitting file '%s' into %d single files.", in_wav_path.name, len(tracks))
+        for track_no, track in enumerate(tracks, start=1):
+            out_wav_path = Path(cue_path.parent).joinpath('%.2d - %s.wav' % (track_no, track.title or 'Untitled'))
+            if out_wav_path.exists():
+                log.warning("File '%s' is already exist, skipping it.", out_wav_path.name)
+                continue
+            log.info("Storing '%s'.", out_wav_path.name)
+            with Wave_write(str(out_wav_path)) as out_wav:
+                out_wav.setparams(params)
+                in_wav.setpos(track.offset)
+                frames = in_wav.readframes(track.length)
+                out_wav.writeframes(frames)
+
+    if sound_path != in_wav_path:
+        log.info("Removing temporary file '%s'.", in_wav_path.name)
+        in_wav_path.unlink()
+
+    log.info('Splitting has been completed successfully.')
+
+
+if __name__ == '__main__':
+    main()

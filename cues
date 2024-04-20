@@ -25,7 +25,7 @@ from enum import Enum, unique
 from logging import INFO as LL_INFO, basicConfig, getLogger
 from pathlib import Path
 from subprocess import check_call
-from typing import List, NoReturn, Optional
+from typing import NoReturn, Optional
 from wave import Wave_read, Wave_write, _wave_params
 
 
@@ -47,7 +47,7 @@ class Codec(Enum):
 log = getLogger(__name__)
 
 
-def _parse_cue_file(cue_sheet: str, wav_params: _wave_params) -> List[Track]:
+def _parse_cue_file(cue_sheet: str, wav_params: _wave_params) -> list[Track]:
     def unquote(value: str) -> str:
         value = value.replace(r'\"', '"')
         value = value.replace(r"\'", "'")
@@ -116,7 +116,7 @@ def main():
     try:
         codec = Codec(snd_path.suffix)
     except ValueError:
-        panic('Unsupported codec, sorry.')
+        panic(f"Unsupported codec '{snd_path.suffix}'.")
 
     wav_path = snd_path.parent / f'{snd_path.stem}.wav'
     match codec:

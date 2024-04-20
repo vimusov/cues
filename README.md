@@ -9,27 +9,14 @@ automatically).
 Usage
 =====
 
-```
-cues <cue_path>
-
-Optional arguments:
-    -e ENCODING: Encoding, like 'koi8-r';
-```
+See `cues -h` for details.
 
 Requirements
 ============
 
-* Python >= 3.5
-* setuptools (for installation only)
+* Python >= 3.10
 * flac (optionally, for support FLAC files)
 * wavpack (optionally, for support WavPack files)
-
-Build and install
-=================
-
-```
-$ python setup.py install
-```
 
 License
 =======

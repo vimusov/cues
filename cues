@@ -110,7 +110,7 @@ def main():
             log.info("Found sound file '%s'.", snd_path.name)
             break
     else:
-        if snd_path := args.snd_path is None:
+        if (snd_path := args.snd_path) is None:
             panic('Unable to detect sound file, try to set it manually.')
 
     try:

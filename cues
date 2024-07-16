@@ -51,6 +51,8 @@ def _parse_cue_file(cue_sheet: str, wav_params: _wave_params) -> list[Track]:
     def unquote(value: str) -> str:
         value = value.replace(r'\"', '"')
         value = value.replace(r"\'", "'")
+        value = value.replace('/', ' ')
+        value = value.replace('\\', ' ')
         return value.strip('"')
 
     lines = [line.strip() for line in cue_sheet.splitlines()]
